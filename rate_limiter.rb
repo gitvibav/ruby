@@ -1,6 +1,6 @@
 class RateLimiter
   def allow?(key)
-    raise NotImplementedError, "Subclasses must implement allow?"
+    raise NotImplementedError, "Subclasses should implement this method"
   end
 end
 
@@ -19,8 +19,8 @@ class TokenBucketLimiter < RateLimiter
       last_refill: now
     })
 
-    refill(bucket, now)
-  
+    refill(now: now, bucket: bucket)
+
     if bucket[:tokens] >= 1
       bucket[:tokens] -= 1
       true
@@ -31,9 +31,9 @@ class TokenBucketLimiter < RateLimiter
 
   private
 
-  def refill(bucket, now)
+  def refill(bucket:, now:)
     elapsed = now - bucket[:last_refill]
-    tokens_to_add= elapsed * @refill_rate
+    tokens_to_add = @refill_rate * elapsed
 
     bucket[:tokens] = [@capacity, bucket[:tokens] + tokens_to_add].min
     bucket[:last_refill] = now
@@ -53,10 +53,8 @@ end
 limiter = TokenBucketLimiter.new(capacity: 5, refill_rate: 1)
 service = RateLimitService.new(limiter: limiter)
 
-puts "Sending 10 requests..."
-
 10.times do |i|
-  allowed = service.allow_request?("user_123")
-  puts "Request #{i+1}: #{allowed ? 'Allowed': 'Blocked'}"
-  sleep( 0.5 )
+  allowed = service.allow_request?("user123")
+  puts "Request #{i+1} #{allowed ? 'Allowed':'Blocked'}"
+  sleep ( 0.5 )
 end
