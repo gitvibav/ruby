@@ -1,60 +1,56 @@
-class RateLimiter
-  def allow?(key)
-    raise NotImplementedError, "Subclasses should implement this method"
+class UserRequest
+  attr_accessor :count, :window_start
+
+  def initialize(time)
+    @count = 1
+    @window_start = time
   end
 end
 
-class TokenBucketLimiter < RateLimiter
-  def initialize(capacity:, refill_rate:)
-    @capacity = capacity
-    @refill_rate = refill_rate
-    @store = {}
+class RateLimiter
+  def initialize(limit:, window:)
+    @limit = limit
+    @window = window # in seconds
+    @requests = {}
   end
 
-  def allow?(key)
-    now = Time.now.to_f
+  def allow(user)
+    now = Time.now
+    user_request = @requests[user]
 
-    bucket = (@store[key] ||= {
-      tokens: @capacity,
-      last_refill: now
-    })
-
-    refill(now: now, bucket: bucket)
-
-    if bucket[:tokens] >= 1
-      bucket[:tokens] -= 1
-      true
-    else
-      false
+    if user_request.nil?
+      @requests[user] = UserRequest.new(now)
+      return true
     end
+
+    if window_expired?(user_request, now)
+      reset_window(user_request, now)
+      return true
+    end
+
+    if user_request.count < @limit
+      user_request.count += 1
+      return true
+    end
+
+    false
   end
 
   private
 
-  def refill(bucket:, now:)
-    elapsed = now - bucket[:last_refill]
-    tokens_to_add = @refill_rate * elapsed
+  def window_expired?(user_request, now)
+    now - user_request.window_start > @window
+  end
 
-    bucket[:tokens] = [@capacity, bucket[:tokens] + tokens_to_add].min
-    bucket[:last_refill] = now
+  def reset_window(user_request, now)
+    user_request.count = 1
+    user_request.window_start = now
   end
 end
 
-class RateLimitService
-  def initialize(limiter:)
-    @limiter = limiter
-  end
+rate_limiter = RateLimiter.new(limit: 5, window: 60)
 
-  def allow_request?(key)
-    @limiter.allow?(key)
-  end
-end
-
-limiter = TokenBucketLimiter.new(capacity: 5, refill_rate: 1)
-service = RateLimitService.new(limiter: limiter)
-
-10.times do |i|
-  allowed = service.allow_request?("user123")
-  puts "Request #{i+1} #{allowed ? 'Allowed':'Blocked'}"
-  sleep ( 0.5 )
+7.times do
+  allowed = rate_limiter.allow("user123")
+  puts "Allowed: #{allowed}"
 end
